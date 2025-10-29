@@ -1,0 +1,101 @@
+/*
+ * stm32f446_uart_driver.c
+ *
+ *  Created on: Oct 23, 2025
+ *      Author: jiperez
+ */
+
+#include "stm32f446_uart_driver.h"
+
+void USART_PeriClockControl(USART_RegDef_t *pUSARTx, uint8_t EnorDi)
+{
+    if(EnorDi == ENABLE) {
+        if(pUSARTx == USART1) USART1_PCLK_EN();
+        else if(pUSARTx == USART2) USART2_PCLK_EN();
+        else if(pUSARTx == USART3) USART3_PCLK_EN();
+        else if(pUSARTx == UART4) UART4_PCLK_EN();
+        else if(pUSARTx == UART5) UART5_PCLK_EN();
+        else if(pUSARTx == USART6) USART6_PCLK_EN();
+    } else {
+        if(pUSARTx == USART1) USART1_PCLK_DI();
+        else if(pUSARTx == USART2) USART2_PCLK_DI();
+        else if(pUSARTx == USART3) USART3_PCLK_DI();
+        else if(pUSARTx == UART4) UART4_PCLK_DI();
+        else if(pUSARTx == UART5) UART5_PCLK_DI();
+        else if(pUSARTx == USART6) USART6_PCLK_DI();
+    }
+}
+
+void USART_Init(USART_Handle_t *pUSARTHandle)
+{
+    USART_PeriClockControl(pUSARTHandle->pUSARTx, ENABLE);
+
+    // Calcular BRR para 115200 baud @ 84MHz PCLK
+    // BRR = (PCLK / (16 * baud)) = (84000000 / (16 * 115200)) = 45.5729
+    // Mantisa = 45, Fraction = 0.5729 * 16 = 9.1664 ≈ 9
+    uint32_t temp_brr = ((45 << 4) | 9);
+    pUSARTHandle->pUSARTx->BRR = temp_brr;
+
+    // Configurar control registers
+    pUSARTHandle->pUSARTx->CR1 = 0;
+    pUSARTHandle->pUSARTx->CR2 = 0;
+    pUSARTHandle->pUSARTx->CR3 = 0;
+
+    // CR1: Habilitar TX, 8 bits de datos, sin paridad
+    pUSARTHandle->pUSARTx->CR1 |= (USART_CR1_TE | USART_CR1_UE);
+
+    // Pequeño delay para estabilización
+    for(volatile uint32_t i = 0; i < 1000; i++);
+}
+
+void USART_SendData(USART_RegDef_t *pUSARTx, uint8_t data)
+{
+    while(!(pUSARTx->SR & USART_SR_TXE));  // Esperar a que TX buffer esté vacío
+    pUSARTx->DR = data;
+}
+
+// Las funciones de interrupción ya las tienes en otros drivers, son similares
+void USART_IRQInterruptConfig(uint8_t IRQNumber, uint8_t EnorDi)
+{
+	if(EnorDi == ENABLE)
+	{
+		if(IRQNumber <= 31)
+		{
+			//ISER0
+			*NVIC_ISER0 |= ( 1 << IRQNumber );
+		}else if(IRQNumber > 31 && IRQNumber < 64)
+		{
+			//ISER1
+			*NVIC_ISER1 |= ( 1 << IRQNumber % 32 );
+		}else if(IRQNumber >= 64 && IRQNumber < 96)
+		{
+			//ISER2
+			*NVIC_ISER2 |= ( 1 << IRQNumber % 64 );
+		}
+	}else
+	{
+		if(IRQNumber <= 31)
+		{
+			//ICER0
+			*NVIC_ICER0 |= ( 1 << IRQNumber );
+		}else if(IRQNumber > 31 && IRQNumber < 64)
+		{
+			//ICER1
+			*NVIC_ICER1 |= ( 1 << IRQNumber % 32 );
+		}else if(IRQNumber >= 64 && IRQNumber < 96)
+		{
+			//ICER2
+			*NVIC_ICER2 |= ( 1 << IRQNumber % 64 );
+		}
+	}
+
+}
+
+void USART_IRQPriorityConfig(uint8_t IRQNumber, uint8_t IRQPriority)
+{
+	//1. find the ipr register
+	uint8_t iprx = IRQNumber / 4;
+	uint8_t iprx_section = IRQNumber % 4;
+	uint8_t shift_amount = (8 * iprx_section) + (8 - NO_PR_BITS_IMPLEMENTED );
+	*(NVIC_PR_BASE_ADDR + (iprx*4)) |= ( IRQPriority << shift_amount );
+}

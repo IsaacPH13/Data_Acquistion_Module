@@ -1,0 +1,50 @@
+/*
+ * stm32f446_rcc_driver.c
+ *
+ *  Created on: Oct 15, 2025
+ *      Author: jiperez
+ */
+#include "stm32f446_rcc_driver.h"
+
+/************************************************************************************
+ * @fn				- SystemCLK_Config_84MHz
+ *
+ * @brief			- Configures internal clk to 84 MHz
+ *
+ * @param[in]		- none
+ *
+ * @return			- none
+ *
+ * @Note			- none
+ */
+
+void SystemCLK_Config_84MHz(void){
+	RCC->CR |= ( 1 << 0);
+//	while((RCC->CR & HSIRDY_IS_RDY) != HSIRDY_IS_RDY);
+	/*PLL_M = 8; 	HSI/PLL_M
+	* PLL_N= 168;	PLL_N*HSI/PLL_M
+	* PLL_P = 4;	(PLL_N*HSI/PLL_M)/PLL_P = Final_Frequency
+	*/
+	RCC->PLLCFGR |= (8 << 0);
+	RCC->PLLCFGR |= (168 << 6);
+	RCC->PLLCFGR |= (1 << 16);
+	RCC->PLLCFGR |= (1 << 22);
+
+	RCC->CR |= (1 << 24);
+//	while((RCC->CR & PLL_IS_RDY) != PLL_IS_RDY);
+
+	FLASH->ACR |= (2 << 0);
+
+	RCC->CFGR |= (0 << 4);
+	//APB1 and APB2 at 42 MHz
+	RCC->CFGR |= (4 << 10);
+	RCC->CFGR |= (4 << 13);
+
+	//PLP_P As selected system clock
+	RCC->CFGR |= (2 << 0);//
+
+
+
+//	while((RCC->CFGR & SWS_MASK) != SWS_IS_SEL);
+}
+

@@ -1,0 +1,11 @@
+../drivers/Src/stm32f446_dma_driver.c:25:6:DMA_PeriClockControl	6
+../drivers/Src/stm32f446_dma_driver.c:53:6:DMA_Init	1
+../drivers/Src/stm32f446_dma_driver.c:101:6:DMA_DeInit	3
+../drivers/Src/stm32f446_dma_driver.c:122:6:DMA_StartTransfer	1
+../drivers/Src/stm32f446_dma_driver.c:141:6:DMA_StopTransfer	1
+../drivers/Src/stm32f446_dma_driver.c:160:6:DMA_IRQInterruptConfig	12
+../drivers/Src/stm32f446_dma_driver.c:210:6:DMA_IRQPriorityConfig	1
+../drivers/Src/stm32f446_dma_driver.c:233:6:DMA_IRQHandling	12
+../drivers/Src/stm32f446_dma_driver.c:274:6:DMA_ClearFlags	2
+../drivers/Src/stm32f446_dma_driver.c:300:6:DMA_SetAddresses	2
+../drivers/Src/stm32f446_dma_driver.c:327:9:DMA_GetTransferStatus	4

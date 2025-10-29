@@ -1,0 +1,122 @@
+#include "stm32f446_uart_driver.h"
+
+void USART_PeriClockControl(USART_RegDef_t *pUSARTx, uint8_t EnorDi)
+{
+    if(EnorDi == ENABLE) {
+        if(pUSARTx == USART1) USART1_PCLK_EN();
+        else if(pUSARTx == USART2) USART2_PCLK_EN();
+        else if(pUSARTx == USART3) USART3_PCLK_EN();
+        else if(pUSARTx == UART4) UART4_PCLK_EN();
+        else if(pUSARTx == UART5) UART5_PCLK_EN();
+        else if(pUSARTx == USART6) USART6_PCLK_EN();
+    } else {
+        if(pUSARTx == USART1) USART1_PCLK_DI();
+        else if(pUSARTx == USART2) USART2_PCLK_DI();
+        else if(pUSARTx == USART3) USART3_PCLK_DI();
+        else if(pUSARTx == UART4) UART4_PCLK_DI();
+        else if(pUSARTx == UART5) UART5_PCLK_DI();
+        else if(pUSARTx == USART6) USART6_PCLK_DI();
+    }
+}
+
+void USART_Init(USART_Handle_t *pUSARTHandle)
+{
+    // 1. Habilitar el reloj del USART (ya se hizo en USART2_Init con USART2_PCLK_EN)
+
+    // 2. Configurar el baud rate
+    // Fórmula: BRR = (PCLK2 / (16 * baud)) para oversampling by 16
+    // PCLK2 = 84 MHz para el STM32F446 cuando se configura a 84 MHz el sistema y APB2 a 84 MHz.
+    // USART2 está en APB1, que corre a 42 MHz. Por lo tanto, debemos usar 42 MHz.
+    // Pero en nuestro código, configuramos el reloj para que APB1 = 42 MHz y APB2 = 84 MHz.
+    // USART2 está en APB1, entonces usamos 42 MHz.
+
+    // Calcular BRR para 115200 baudios con oversampling by 16
+    // BRR = (42000000) / (16 * 115200) = 22.786...
+    // Entonces: DIV_Mantissa = 22, DIV_Fraction = 0.786 * 16 = 12.576 -> 13
+    // BRR = (22 << 4) | 13 = 0x16D
+
+    uint32_t clock_freq = 42000000; // APB1 clock frequency
+    uint32_t desired_baud = pUSARTHandle->USART_Config.USART_Baud;
+    uint32_t usartdiv = (clock_freq + (desired_baud / 2)) / desired_baud; // Rounding
+    uint32_t mantissa = usartdiv / 16;
+    uint32_t fraction = usartdiv % 16;
+    pUSARTHandle->pUSARTx->BRR = (mantissa << 4) | fraction;
+
+    // 3. Configurar el ancho de palabra, paridad y bits de parada
+    uint32_t temp_reg = 0;
+
+    // Configurar el ancho de palabra
+    if (pUSARTHandle->USART_Config.USART_WordLength == USART_WORDLEN_8B) {
+        temp_reg |= USART_CR1_M; // 8 bits
+    } else {
+        // 9 bits
+        temp_reg |= USART_CR1_M;
+    }
+
+    // Configurar paridad
+    if (pUSARTHandle->USART_Config.USART_ParityControl == USART_PARITY_ENABLE) {
+        temp_reg |= USART_CR1_PCE;
+        // Nota: Si la paridad está habilitada, el ancho de palabra real es 8 bits (M=0) o 9 bits (M=1) pero el dato es de 7 u 8 bits respectivamente.
+        // Por simplicidad, asumimos que el usuario configura M según la paridad.
+    }
+
+    // Escribir en CR1
+    pUSARTHandle->pUSARTx->CR1 = temp_reg;
+
+    // Configurar bits de parada en CR2
+    temp_reg = 0;
+    temp_reg |= (pUSARTHandle->USART_Config.USART_StopBits << 12);
+    pUSARTHandle->pUSARTx->CR2 = temp_reg;
+
+    // Configurar control de flujo hardware en CR3
+    temp_reg = 0;
+    temp_reg |= pUSARTHandle->USART_Config.USART_HWFlowControl;
+    pUSARTHandle->pUSARTx->CR3 = temp_reg;
+
+    // 4. Habilitar el USART y el transmisor
+    pUSARTHandle->pUSARTx->CR1 |= (USART_CR1_UE | USART_CR1_TE);
+}
+
+void USART_IRQInterruptConfig(uint8_t IRQNumber, uint8_t EnorDi)
+{
+	if(EnorDi == ENABLE)
+	{
+		if(IRQNumber <= 31)
+		{
+			//ISER0
+			*NVIC_ISER0 |= ( 1 << IRQNumber );
+		}else if(IRQNumber > 31 && IRQNumber < 64)
+		{
+			//ISER1
+			*NVIC_ISER1 |= ( 1 << IRQNumber % 32 );
+		}else if(IRQNumber >= 64 && IRQNumber < 96)
+		{
+			//ISER2
+			*NVIC_ISER2 |= ( 1 << IRQNumber % 64 );
+		}
+	}else
+	{
+		if(IRQNumber <= 31)
+		{
+			//ICER0
+			*NVIC_ICER0 |= ( 1 << IRQNumber );
+		}else if(IRQNumber > 31 && IRQNumber < 64)
+		{
+			//ICER1
+			*NVIC_ICER1 |= ( 1 << IRQNumber % 32 );
+		}else if(IRQNumber >= 64 && IRQNumber < 96)
+		{
+			//ICER2
+			*NVIC_ICER2 |= ( 1 << IRQNumber % 64 );
+		}
+	}
+
+}
+
+void USART_IRQPriorityConfig(uint8_t IRQNumber, uint8_t IRQPriority)
+{
+	uint8_t iprx = IRQNumber / 4;
+	uint8_t iprx_section = IRQNumber % 4;
+	uint8_t shift_amount = (8 * iprx_section) + (8 - NO_PR_BITS_IMPLEMENTED );
+	*(NVIC_PR_BASE_ADDR + (iprx*4)) |= ( IRQPriority << shift_amount );
+}

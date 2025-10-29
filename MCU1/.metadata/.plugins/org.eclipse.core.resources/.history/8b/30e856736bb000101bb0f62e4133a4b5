@@ -1,0 +1,142 @@
+/*
+ * 005com.c - Timer a 9600Hz para interrupciones
+ */
+#include "stm32f446.h"
+
+uint16_t value[1] = {0};
+TIM_Handle_t *pTIM;
+
+// Handle para USART2
+USART_Handle_t USART2Handle;
+
+// Variables para control de envío
+volatile uint16_t debug_counter = 0;
+volatile uint8_t send_data_flag = 0;
+uint16_t last_sent_value = 0;
+
+// Función de delay
+void robust_delay(uint32_t count) {
+    for(volatile uint32_t i = 0; i < count; i++) {
+        __asm__("nop");
+    }
+}
+
+int main(void)
+{
+    SystemCLK_Config_84MHz();
+    robust_delay(1000000);
+
+    // Configurar LED
+    GPIO_Handle_t DebugLed;
+    DebugLed.pGPIOx = GPIOA;
+    DebugLed.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_5;
+    DebugLed.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_OUTPUT;
+    DebugLed.GPIO_PinConfig.GPIO_PinSpeed = GPIO_SPEED_FAST;
+    DebugLed.GPIO_PinConfig.GPIO_PinOPType = GPIO_OP_TYPE_PP;
+    DebugLed.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+    GPIO_PeriClockControl(GPIOA, ENABLE);
+    GPIO_Init(&DebugLed);
+
+    robust_delay(50000);
+
+    TIM_Handle_t TIM_2;
+    pTIM = &TIM_2;
+    TIM_2.pTIMx = TIM2;
+    TIM_2.TIM_Config.TIM_Frequency = 9600;  // 9600 Hz
+    TIM_2.TIM_Config.TIM_CLKDivision = TIM_CKD_DIV1;
+    TIM_2.TIM_Config.TIM_AutoReloadPreload = TIM_ARPE_ENABLE;
+    TIM_2.TIM_Config.TIM_CNTMode = TIM_UPCOUNT_MODE;
+    TIM_2.TIM_Config.TIM_IntEnable = TIM_IT_ENABLE;
+    TIM_2.TIM_Config.TIM_MasterModeSel = TIM_MMS_RESET;
+
+    TIM_PeriClockControl(TIM2, ENABLE);
+    TIM_Init(pTIM);
+    TIM_Start(&TIM_2);
+    TIM_IRQInterruptConfig(IRQ_NO_TIM2, ENABLE);
+    TIM_IRQPriorityConfig(IRQ_NO_TIM2, 0);
+
+    robust_delay(500000);
+
+    // Configurar ADC
+    GPIO_Handle_t ADCIn_0;
+    ADCIn_0.pGPIOx = GPIOA;
+    ADCIn_0.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_ANALOG;
+    ADCIn_0.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_1;
+    ADCIn_0.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+    GPIO_PeriClockControl(GPIOA, ENABLE);
+    GPIO_Init(&ADCIn_0);
+
+    robust_delay(10000);
+
+    ADC_Handle_t ADC_channel_0;
+    ADC_channel_0.pADCx = ADC1;
+    ADC_channel_0.ADC_Config.ADC_Resolution = ADC_RESOLUTION_12_B;
+    ADC_channel_0.ADC_Config.ADC_DataAlignment = ADC_DATA_ALIGNMENT_RIGHT;
+    ADC_channel_0.ADC_Config.ADC_ScanMode =  ADC_SCAN_MODE_EN;
+    ADC_channel_0.ADC_Config.ADC_ConversionMode =  ADC_CONV_MODE_CONTINUOUS;
+    ADC_channel_0.ADC_Config.ADC_ExternalTriggerDetection =  ADC_EXT_TRIG_DECT_DI;
+    ADC_channel_0.ADC_Config.ADC_DMAContinuousRequests =  ADC_DMA_MODE_EN;
+    ADC_channel_0.ADC_Config.ADC_EOCSelection =  ADC_EOC_PER_CONVERSION;
+    ADC_channel_0.ADC_Config.ADC_EOCInterrupt =  ADC_EOC_IT_DI;
+
+    ADC_channel_0.ADC_NumChannels = 1;
+    ADC_ChannelConfig(&ADC_channel_0, 1, 0, ADC_SMP_T_15);
+    ADC_ConfigSequence(&ADC_channel_0);
+    ADC_Init(&ADC_channel_0);
+
+    robust_delay(10000);
+
+    // Configurar DMA
+    DMA_Handle_t DMA_0;
+    DMA_0.pDMAx = DMA2;
+    DMA_0.DMA_Config.DMA_Channel = DMA_CHANNEL_0;
+    DMA_0.DMA_Config.DMA_Direction = DMA_DIR_PERIPH_TO_MEM;
+    DMA_0.DMA_Config.DMA_Priority = DMA_PRIORITY_HIGH;
+    DMA_0.DMA_Config.DMA_MemDataSize = DMA_DATA_SIZE_HALFWORD;
+    DMA_0.DMA_Config.DMA_PeriphDataSize = DMA_DATA_SIZE_HALFWORD;
+    DMA_0.DMA_Config.DMA_MemInc = ENABLE;
+    DMA_0.DMA_Config.DMA_PeriphInc = DISABLE;
+    DMA_0.DMA_Config.DMA_FIFOMode = DMA_FIFO_MODE_DISABLED;
+    DMA_0.DMA_Config.DMA_FIFOThreshold = 0;
+    DMA_0.DMA_Config.DMA_Mode = DMA_MODE_CIRCULAR;
+    DMA_0.BufferSize = 1;
+
+    DMA_SetAddresses(&DMA_0,(void*)&ADC_channel_0.pADCx->DR,(void*)value);
+    DMA_Init(&DMA_0);
+    robust_delay(10000);
+
+    // Iniciar conversiones
+    ADC_StartConversion(&ADC_channel_0);
+    DMA_StartTransfer(&DMA_0);
+
+    // LED indicando sistema listo
+    GPIO_WriteToOutputPin(GPIOA, GPIO_PIN_NO_5, 1);
+    robust_delay(1000000);
+    GPIO_WriteToOutputPin(GPIOA, GPIO_PIN_NO_5, 0);
+
+	while(1);
+
+	return 0;
+}
+
+/*
+ * Versión con envío en interrupción (más sincronizado)
+ */
+
+// Variables globales para esta versión
+volatile uint8_t tx_data_low = 0;
+volatile uint8_t tx_data_high = 0;
+volatile uint8_t send_data_now = 0;
+
+void TIM2_IRQHandler(void)
+{
+    // Limpiar flag de interrupción
+    if(TIM2->SR & (1 << 0)) {
+        TIM2->SR &= ~(1 << 0);
+    }
+    if(value[0]>3000)debug_counter++;
+    // Toggle LED cada 1000 interrupciones
+    if(debug_counter % 1000 == 0) {
+        GPIO_ToggleOutputPin(GPIOA, GPIO_PIN_NO_5);
+    }
+}

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<section name="Workbench">
+	<item key="hasShownOverlayPopupBefore" value="true"/>
+	<item key="replaceBarOpen" value="true"/>
+	<list key="replacehistory">
+		<item value="PWM"/>
+		<item value="_REG_RESET"/>
+		<item value="_REG_RESET()"/>
+		<item value="pTIMx"/>
+		<item value="_DI"/>
+		<item value="TIM2"/>
+		<item value="TIM1_P"/>
+		<item value="TIM1"/>
+		<item value="pTIMX"/>
+		<item value="Isaac Perez (ShiLiba)"/>
+		<item value="&amp;= ~( "/>
+		<item value="&amp;= ~("/>
+		<item value="uint"/>
+		<item value="DI"/>
+		<item value="&amp;"/>
+	</list>
+	<list key="searchhistory">
+		<item value="Led"/>
+		<item value="NDTR"/>
+		<item value="_PCLK_EN"/>
+		<item value="pTIMX"/>
+		<item value="_EN"/>
+		<item value="GPIOB"/>
+		<item value="TIM1P"/>
+		<item value="GPIOA_"/>
+		<item value="pGPIOx"/>
+		<item value="jiperez"/>
+		<item value="acr"/>
+		<item value="flash"/>
+		<item value="|= ("/>
+		<item value="_DI"/>
+		<item value="unit"/>
+	</list>
+</section>

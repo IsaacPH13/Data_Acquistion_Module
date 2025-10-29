@@ -1,0 +1,74 @@
+/*
+ * 004filter.c
+ *
+ *  Created on: Oct 22, 2025
+ *      Author: jiperez
+ */
+#include "stm32f446.h"
+
+uint16_t value[1];
+
+int main(void)
+{
+	SystemCLK_Config_84MHz();
+
+	GPIO_Handle_t ADCIn_0;
+	ADCIn_0.pGPIOx = GPIOA;
+	ADCIn_0.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_ANALOG;
+	ADCIn_0.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_1;
+	ADCIn_0.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+	GPIO_PeriClockControl(GPIOA, ENABLE);
+	GPIO_Init(&ADCIn_0);
+
+	ADC_Handle_t ADC_channel_0;
+	ADC_channel_0.ADC_Config.ADC_Resolution = ADC_RESOLUTION_12_B;
+	ADC_channel_0.ADC_Config.ADC_DataAlignment = ADC_DATA_ALIGNMENT_RIGHT;
+	ADC_channel_0.ADC_Config.ADC_ScanMode =  ADC_SCAN_MODE_EN;
+	ADC_channel_0.ADC_Config.ADC_ConversionMode =  ADC_CONV_MODE_CONTINUOUS;
+	ADC_channel_0.ADC_Config.ADC_ExternalTriggerDetection =  ADC_EXT_TRIG_DECT_DI;
+	ADC_channel_0.ADC_Config.ADC_DMAContinuousRequests =  ADC_DMA_MODE_EN;
+	ADC_channel_0.ADC_Config.ADC_EOCSelection =  ADC_EOC_PER_CONVERSION;
+	ADC_channel_0.ADC_Config.ADC_EOCInterrupt =  ADC_EOC_IT_DI;
+
+	ADC_channel_0.ADC_NumChannels = 1;
+	ADC_ChannelConfig(&ADC_channel_0, 0, 0, ADC_SMP_T_15);
+	ADC_ConfigSequence(&ADC_channel_0);
+
+	ADC_Init(&ADC_channel_0);
+
+	DMA_Handle_t DMA_0;
+	DMA_0.DMA_Config.DMA_Channel = DMA_CHANNEL_0;
+	DMA_0.DMA_Config.DMA_Direction = DMA_DIR_PERIPH_TO_MEM;
+	DMA_0.DMA_Config.DMA_Priority = DMA_PRIORITY_HIGH;
+	DMA_0.DMA_Config.DMA_MemDataSize = DMA_DATA_SIZE_HALFWORD;
+	DMA_0.DMA_Config.DMA_PeriphDataSize = DMA_DATA_SIZE_HALFWORD;
+	DMA_0.DMA_Config.DMA_MemInc = DMA_DATA_SIZE_HALFWORD;
+	DMA_0.DMA_Config.DMA_PeriphInc = DMA_DATA_SIZE_HALFWORD;
+	DMA_0.DMA_Config.DMA_Mode = DMA_MODE_CIRCULAR;
+
+
+	DMA_0.pSourceAddr = (uint32_t)&ADC_channel_0.pADCx->DR;
+	DMA_0.pDestAddr = (uint32_t)value;
+	DMA_0.BufferSize = 1;
+
+
+	TIM_Handle_t TIM_2;
+	TIM_2.pTIMx = TIM2;
+	TIM_2.TIM_Config.TIM_Frequency = 9600;
+	TIM_2.TIM_Config.TIM_CLKDivision = TIM_CKD_DIV1;
+	TIM_2.TIM_Config.TIM_AutoReloadPreload = TIM_ARPE_ENABLE;
+	TIM_2.TIM_Config.TIM_CNTMode = TIM_UPCOUNT_MODE;
+	TIM_2.TIM_Config.TIM_IntEnable = TIM_IT_ENABLE;
+	TIM_2.TIM_Config.TIM_MasterModeSel = TIM_MMS_RESET;
+	TIM_Init(&TIM_2);
+
+	TIM_IRQInterruptConfig(IRQ_NO_TIM2, ENABLE);
+	TIM_IRQPriorityConfig(IRQ_NO_TIM2, 0);
+
+	while(1);
+	return 0;
+}
+void TIM2_IRQHandler(void)
+{
+
+}

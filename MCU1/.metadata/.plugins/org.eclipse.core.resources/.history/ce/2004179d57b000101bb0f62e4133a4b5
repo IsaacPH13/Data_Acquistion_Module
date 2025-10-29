@@ -1,0 +1,166 @@
+/*
+ * 005com.c
+ *
+ *  Created on: Oct 23, 2025
+ *      Author: jiperez
+ */
+#include "stm32f446.h"
+
+uint16_t value[1];
+TIM_Handle_t *pTIM;
+float new;
+
+// Variables para comunicación UART
+uint8_t uart_tx_buffer[2] = {0xAA, 0x55};  // Patrón de test
+volatile uint8_t uart_ready_to_send = 0;
+uint32_t uart_sent_count = 0;
+
+// Pin de debug
+GPIO_Handle_t DebugPin;
+
+void DebugPin_Init(void) {
+    DebugPin.pGPIOx = GPIOA;
+    DebugPin.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_5;
+    DebugPin.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_OUTPUT;
+    DebugPin.GPIO_PinConfig.GPIO_PinSpeed = GPIO_SPEED_FAST;
+    DebugPin.GPIO_PinConfig.GPIO_PinOPType = GPIO_OP_TYPE_PP;
+    DebugPin.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+    GPIO_PeriClockControl(GPIOA, ENABLE);
+    GPIO_Init(&DebugPin);
+}
+
+int main(void)
+{
+	SystemCLK_Config_84MHz();
+
+    // Inicializar pin de debug
+    DebugPin_Init();
+    GPIO_WriteToOutputPin(GPIOA, GPIO_PIN_NO_5, 1);  // LED ON al inicio
+
+	// Configuración UART (USART2 - PA2 TX, PA3 RX)
+	GPIO_Handle_t USART2Pins;
+
+	// Pin PA2 como TX
+	USART2Pins.pGPIOx = GPIOA;
+	USART2Pins.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_2;
+	USART2Pins.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_ALTFN;
+	USART2Pins.GPIO_PinConfig.GPIO_PinAltFunMode = 7; // AF7 para USART2
+	USART2Pins.GPIO_PinConfig.GPIO_PinOPType = GPIO_OP_TYPE_PP;
+	USART2Pins.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_PIN_PU;
+	USART2Pins.GPIO_PinConfig.GPIO_PinSpeed = GPIO_SPEED_FAST;
+	GPIO_PeriClockControl(GPIOA, ENABLE);
+	GPIO_Init(&USART2Pins);
+
+	// Configuración USART2
+	USART_Handle_t USART2Handle;
+	USART2Handle.pUSARTx = USART2;
+	USART2Handle.USART_Config.USART_Baud = 9600;
+	USART2Handle.USART_Config.USART_WordLength = USART_WORDLEN_8B;
+	USART2Handle.USART_Config.USART_StopBits = USART_STOPBITS_1;
+	USART2Handle.USART_Config.USART_ParityControl = USART_PARITY_DISABLE;
+	USART2Handle.USART_Config.USART_Mode = USART_MODE_TX;
+	USART2Handle.USART_Config.USART_HWFlowControl = USART_HW_FLOW_CTRL_NONE;
+
+	USART_Init(&USART2Handle);
+
+    // Test inicial - enviar patrón conocido AA 55
+    for(int i = 0; i < 5; i++) {
+        USART_SendData(USART2, uart_tx_buffer, 2);
+        for(volatile uint32_t d = 0; d < 50000; d++);  // Delay entre envíos
+    }
+
+	// Tu código original ADC
+	GPIO_Handle_t ADCIn_0;
+	ADCIn_0.pGPIOx = GPIOA;
+	ADCIn_0.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_ANALOG;
+	ADCIn_0.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_1;
+	ADCIn_0.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+	GPIO_Init(&ADCIn_0);
+
+	ADC_Handle_t ADC_channel_0;
+	ADC_channel_0.pADCx = ADC1;
+	ADC_channel_0.ADC_Config.ADC_Resolution = ADC_RESOLUTION_12_B;
+	ADC_channel_0.ADC_Config.ADC_DataAlignment = ADC_DATA_ALIGNMENT_RIGHT;
+	ADC_channel_0.ADC_Config.ADC_ScanMode =  ADC_SCAN_MODE_EN;
+	ADC_channel_0.ADC_Config.ADC_ConversionMode =  ADC_CONV_MODE_CONTINUOUS;
+	ADC_channel_0.ADC_Config.ADC_ExternalTriggerDetection =  ADC_EXT_TRIG_DECT_DI;
+	ADC_channel_0.ADC_Config.ADC_DMAContinuousRequests =  ADC_DMA_MODE_EN;
+	ADC_channel_0.ADC_Config.ADC_EOCSelection =  ADC_EOC_PER_CONVERSION;
+	ADC_channel_0.ADC_Config.ADC_EOCInterrupt =  ADC_EOC_IT_DI;
+
+	ADC_channel_0.ADC_NumChannels = 1;
+	ADC_ChannelConfig(&ADC_channel_0, 1, 0, ADC_SMP_T_15);
+	ADC_ConfigSequence(&ADC_channel_0);
+
+	ADC_Init(&ADC_channel_0);
+
+	DMA_Handle_t DMA_0;
+	DMA_0.pDMAx = DMA2;
+	DMA_0.DMA_Config.DMA_Channel = DMA_CHANNEL_0;
+	DMA_0.DMA_Config.DMA_Direction = DMA_DIR_PERIPH_TO_MEM;
+	DMA_0.DMA_Config.DMA_Priority = DMA_PRIORITY_HIGH;
+	DMA_0.DMA_Config.DMA_MemDataSize = DMA_DATA_SIZE_HALFWORD;
+	DMA_0.DMA_Config.DMA_PeriphDataSize = DMA_DATA_SIZE_HALFWORD;
+	DMA_0.DMA_Config.DMA_MemInc = ENABLE;
+	DMA_0.DMA_Config.DMA_PeriphInc = DISABLE;
+	DMA_0.DMA_Config.DMA_FIFOMode = DMA_FIFO_MODE_DISABLED;
+	DMA_0.DMA_Config.DMA_FIFOThreshold = 0;
+	DMA_0.DMA_Config.DMA_Mode = DMA_MODE_CIRCULAR;
+	DMA_0.BufferSize = 1;
+
+	DMA_SetAddresses(&DMA_0,(void*)&ADC_channel_0.pADCx->DR,(void*)value);
+
+	DMA_Init(&DMA_0);
+
+	ADC_StartConversion(&ADC_channel_0);
+	DMA_StartTransfer(&DMA_0);
+
+	// Timer para enviar datos ADC
+	TIM_Handle_t TIM_2;
+	pTIM = &TIM_2;
+	TIM_2.pTIMx = TIM2;
+	TIM_2.TIM_Config.TIM_Frequency = 100;  // 100Hz = 10ms
+	TIM_2.TIM_Config.TIM_CLKDivision = TIM_CKD_DIV1;
+	TIM_2.TIM_Config.TIM_AutoReloadPreload = TIM_ARPE_ENABLE;
+	TIM_2.TIM_Config.TIM_CNTMode = TIM_UPCOUNT_MODE;
+	TIM_2.TIM_Config.TIM_IntEnable = TIM_IT_ENABLE;
+	TIM_2.TIM_Config.TIM_MasterModeSel = TIM_MMS_RESET;
+	TIM_Init(&TIM_2);
+
+	TIM_Start(&TIM_2);
+
+	TIM_IRQInterruptConfig(IRQ_NO_TIM2, ENABLE);
+	TIM_IRQPriorityConfig(IRQ_NO_TIM2, 0);
+
+    GPIO_WriteToOutputPin(GPIOA, GPIO_PIN_NO_5, 0);  // LED OFF - sistema listo
+
+	while(1) {
+		// Enviar datos por UART cuando estén listos
+		if(uart_ready_to_send) {
+            GPIO_WriteToOutputPin(GPIOA, GPIO_PIN_NO_5, 1);  // LED ON durante transmisión
+			USART_SendData(USART2, uart_tx_buffer, 2);
+			uart_sent_count++;
+			uart_ready_to_send = 0;
+            GPIO_WriteToOutputPin(GPIOA, GPIO_PIN_NO_5, 0);  // LED OFF
+		}
+	}
+	return 0;
+}
+
+void TIM2_IRQHandler(void)
+{
+	static uint32_t sample_counter = 0;
+
+	TIM_IRQHandling(pTIM);
+	new = (value[0]/4095.0f)*3.3f;
+
+	// Enviar datos ADC cada 10 interrupciones (1 segundo)
+	if(sample_counter++ >= 10) {
+		// Preparar datos ADC en formato binario (2 bytes, little-endian)
+		uart_tx_buffer[0] = value[0] & 0xFF;        // Byte bajo
+		uart_tx_buffer[1] = (value[0] >> 8) & 0xFF; // Byte alto
+
+		uart_ready_to_send = 1;
+		sample_counter = 0;
+	}
+}

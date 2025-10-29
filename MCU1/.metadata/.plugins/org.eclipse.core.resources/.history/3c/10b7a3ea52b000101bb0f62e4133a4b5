@@ -1,0 +1,48 @@
+/*
+ * stm32f446_rcc_driver.c
+ *
+ *  Created on: Oct 15, 2025
+ *      Author: jiperez
+ */
+#include "stm32f446_rcc_driver.h"
+
+/************************************************************************************
+ * @fn				- SystemCLK_Config_84MHz
+ *
+ * @brief			- Configures internal clk to 84 MHz
+ *
+ * @param[in]		- none
+ *
+ * @return			- none
+ *
+ * @Note			- none
+ */
+
+void SystemCLK_Config_84MHz(void){
+    // 1. Enable HSI and wait
+    RCC->CR |= (1 << 0);
+    while((RCC->CR & (1 << 1)) == 0); // Wait for HSIRDY
+
+    // 2. Configure PLL (CLEAR FIRST!)
+    RCC->PLLCFGR = 0;
+    RCC->PLLCFGR |= (8 << 0);    // PLLM = 8
+    RCC->PLLCFGR |= (168 << 6);  // PLLN = 168
+    RCC->PLLCFGR |= (1 << 16);   // PLLP = 4 (01 = divide by 4)
+    RCC->PLLCFGR &= ~(1 << 22);  // HSI as PLL source (bit 22 = 0)
+
+    // 3. Enable PLL and wait
+    RCC->CR |= (1 << 24);
+    while((RCC->CR & (1 << 25)) == 0); // Wait for PLLRDY
+
+    // 4. Flash latency
+    FLASH->ACR |= (2 << 0);
+
+    // 5. Configure prescalers
+    RCC->CFGR = 0;
+    RCC->CFGR |= (4 << 10);   // APB1 = /2 (42MHz)
+    RCC->CFGR |= (4 << 13);   // APB2 = /2 (42MHz)
+
+    // 6. Switch to PLL and wait
+    RCC->CFGR |= (2 << 0);
+    while((RCC->CFGR & (3 << 2)) != (2 << 2)); // Wait for SWS = PLL
+}

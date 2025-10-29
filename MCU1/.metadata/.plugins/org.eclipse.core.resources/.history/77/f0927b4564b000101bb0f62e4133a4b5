@@ -1,0 +1,147 @@
+/*
+ * 005com.c - Debug ADC específico
+ */
+#include "stm32f446.h"
+
+uint16_t value[1] = {0};  // Inicializar a 0
+TIM_Handle_t *pTIM;
+float new;
+
+// Handle para USART2
+USART_Handle_t USART2Handle;
+
+// Buffer para enviar datos (2 bytes)
+uint8_t tx_buffer[2];
+
+// Contador de debug
+volatile uint16_t debug_counter = 0;
+volatile uint32_t adc_debug_value = 0;
+
+// Función para enviar string por UART (para debug)
+void USART_SendString(USART_Handle_t *pUSARTHandle, char *str) {
+    while(*str) {
+        while(!(pUSARTHandle->pUSARTx->SR & (1 << 7))); // Wait for TXE
+        pUSARTHandle->pUSARTx->DR = *str;
+        str++;
+    }
+}
+
+int main(void)
+{
+	SystemCLK_Config_84MHz();
+
+    // LED de debug en PA5
+    GPIO_Handle_t DebugLed;
+    DebugLed.pGPIOx = GPIOA;
+    DebugLed.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_5;
+    DebugLed.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_OUTPUT;
+    DebugLed.GPIO_PinConfig.GPIO_PinSpeed = GPIO_SPEED_FAST;
+    DebugLed.GPIO_PinConfig.GPIO_PinOPType = GPIO_OP_TYPE_PP;
+    DebugLed.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+    GPIO_PeriClockControl(GPIOA, ENABLE);
+    GPIO_Init(&DebugLed);
+
+
+    // // Configuración del pin ADC
+    // GPIO_Handle_t ADCIn_0;
+    // ADCIn_0.pGPIOx = GPIOA;
+    // ADCIn_0.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_ANALOG;
+    // ADCIn_0.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_1;
+    // ADCIn_0.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+    // GPIO_Init(&ADCIn_0);
+
+    // // **CONFIGURACIÓN SIMPLIFICADA DEL ADC - SIN DMA**
+    // ADC_Handle_t ADC_channel_0;
+    // ADC_channel_0.pADCx = ADC1;
+
+    // // Configuración mínima
+    // ADC_channel_0.ADC_Config.ADC_Resolution = ADC_RESOLUTION_12_B;
+    // ADC_channel_0.ADC_Config.ADC_DataAlignment = ADC_DATA_ALIGNMENT_RIGHT;
+    // ADC_channel_0.ADC_Config.ADC_ScanMode = ADC_SCAN_MODE_DI;        // NO scan mode
+    // ADC_channel_0.ADC_Config.ADC_ConversionMode = ADC_CONV_MODE_SINGLE; // Single conversion
+    // ADC_channel_0.ADC_Config.ADC_ExternalTriggerDetection = ADC_EXT_TRIG_DECT_DI;
+    // ADC_channel_0.ADC_Config.ADC_DMAContinuousRequests = ADC_DMA_MODE_DI; // NO DMA
+    // ADC_channel_0.ADC_Config.ADC_EOCSelection = ADC_EOC_PER_CONVERSION;
+    // ADC_channel_0.ADC_Config.ADC_EOCInterrupt = ADC_EOC_IT_DI;
+
+    // ADC_channel_0.ADC_NumChannels = 1;
+    // ADC_ChannelConfig(&ADC_channel_0, 1, 0, ADC_SMP_T_15);
+    // ADC_ConfigSequence(&ADC_channel_0);
+
+    // USART_SendString(&USART2Handle, "Initializing ADC...\r\n");
+    // ADC_Init(&ADC_channel_0);
+    // USART_SendString(&USART2Handle, "ADC Initialized\r\n");
+
+    // // **PROBAR LECTURA DIRECTA DEL ADC**
+    // USART_SendString(&USART2Handle, "Testing direct ADC read...\r\n");
+
+    // // Leer ADC directamente varias veces
+    // for(int i = 0; i < 5; i++) {
+    //     ADC_StartConversion(&ADC_channel_0);
+
+    //     // Esperar conversión
+    //     volatile uint32_t timeout = 100000;
+    //     while(!ADC_GetConversionStatus(&ADC_channel_0) && timeout--);
+
+    //     if(timeout > 0) {
+    //         uint16_t adc_val = ADC_ReadData(&ADC_channel_0);
+
+    //         // Enviar valor por UART
+    //         tx_buffer[0] = adc_val & 0xFF;
+    //         tx_buffer[1] = (adc_val >> 8) & 0xFF;
+    //         USART_SendData(&USART2Handle, tx_buffer, 2);
+
+    //         // Enviar mensaje
+    //         USART_SendString(&USART2Handle, "ADC: ");
+    //         USART_SendData(&USART2Handle, tx_buffer, 2);
+    //         USART_SendString(&USART2Handle, "\r\n");
+    //     } else {
+    //         USART_SendString(&USART2Handle, "ADC Timeout!\r\n");
+    //     }
+
+    //     // Pequeño delay
+    //     for(volatile uint32_t d = 0; d < 100000; d++);
+    // }
+
+	// Timer para continuar con el debug
+	TIM_Handle_t TIM_2;
+	pTIM = &TIM_2;
+	TIM_2.pTIMx = TIM2;
+	TIM_2.TIM_Config.TIM_Frequency = 2;  // 2Hz = 500ms (más lento para debug)
+	TIM_2.TIM_Config.TIM_CLKDivision = TIM_CKD_DIV1;
+	TIM_2.TIM_Config.TIM_AutoReloadPreload = TIM_ARPE_ENABLE;
+	TIM_2.TIM_Config.TIM_CNTMode = TIM_UPCOUNT_MODE;
+	TIM_2.TIM_Config.TIM_IntEnable = TIM_IT_ENABLE;
+	TIM_2.TIM_Config.TIM_MasterModeSel = TIM_MMS_RESET;
+	TIM_Init(&TIM_2);
+
+	TIM_Start(&TIM_2);
+
+	TIM_IRQInterruptConfig(IRQ_NO_TIM2, ENABLE);
+	TIM_IRQPriorityConfig(IRQ_NO_TIM2, 0);
+
+    USART_SendString(&USART2Handle, "Starting main loop...\r\n");
+
+	while(1) {
+		// Loop principal - el ADC se prueba en la interrupción
+	}
+	return 0;
+}
+
+void TIM2_IRQHandler(void)
+{
+	static uint32_t adc_test_count = 0;
+
+	TIM_IRQHandling(pTIM);
+
+	// Incrementar contador de debug
+	debug_counter++;
+
+	// Toggle LED cada interrupción
+	GPIO_ToggleOutputPin(GPIOA, GPIO_PIN_NO_5);
+
+	// Enviar solo el contador (sin ADC)
+	tx_buffer[0] = debug_counter & 0xFF;
+	tx_buffer[1] = (debug_counter >> 8) & 0xFF;
+	//USART_SendData(&USART2Handle, tx_buffer, 2);
+}

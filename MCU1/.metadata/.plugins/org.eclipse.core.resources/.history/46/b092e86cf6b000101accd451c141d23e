@@ -1,0 +1,122 @@
+/*
+ * 006filter.c
+ *
+ *  Created on: Oct 23, 2025
+ *      Author: jiperez
+ */
+#include "stm32f446.h"
+
+TIM_Handle_t *pTIM ;
+GPIO_Handle_t *pGPIO;
+ADC_Handle_t *pADC;
+uint16_t value;
+int main(void)
+{
+	SystemCLK_Config_84MHz();
+
+	for(uint16_t i = 0; i<10000; i++);
+
+	GPIO_Handle_t GpioLed;
+
+	pGPIO = &GpioLed;
+
+	GPIO_PeriClockControl(GPIOA, ENABLE);
+
+	GpioLed.pGPIOx = GPIOA;
+	GpioLed.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_5;
+	GpioLed.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_OUTPUT;
+	GpioLed.GPIO_PinConfig.GPIO_PinSpeed = GPIO_SPEED_FAST;
+	GpioLed.GPIO_PinConfig.GPIO_PinOPType = GPIO_OP_TYPE_PP;
+	GpioLed.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+
+	GPIO_Init(&GpioLed);
+
+	GPIO_PeriClockControl(GPIOA, ENABLE);
+
+    GPIO_Handle_t ADCIn_0;
+
+    ADCIn_0.pGPIOx = GPIOA;
+    ADCIn_0.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_ANALOG;
+    ADCIn_0.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_1;
+    ADCIn_0.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+
+    GPIO_Init(&ADCIn_0);
+
+    ADC_Handle_t ADC_channel_0;
+
+    pADC = &ADC_channel_0;
+
+    ADC_PeriClockControl(ADC1, ENABLE);
+
+    ADC_channel_0.pADCx = ADC1;
+    ADC_channel_0.ADC_Config.ADC_Resolution = ADC_RESOLUTION_12_B;
+    ADC_channel_0.ADC_Config.ADC_DataAlignment = ADC_DATA_ALIGNMENT_RIGHT;
+    ADC_channel_0.ADC_Config.ADC_ScanMode =  ADC_SCAN_MODE_DI;
+    ADC_channel_0.ADC_Config.ADC_ConversionMode =  ADC_CONV_MODE_SINGLE;
+    ADC_channel_0.ADC_Config.ADC_ExternalTriggerDetection =  ADC_EXT_TRIG_DECT_RE;
+    ADC_channel_0.ADC_Config.ADC_ExternalTrigger =  ADC_EXT_TRIG_TIM2_TRGO;
+    ADC_channel_0.ADC_Config.ADC_DMAContinuousRequests =  ADC_DMA_MODE_DI;
+    ADC_channel_0.ADC_Config.ADC_EOCSelection =  ADC_EOC_PER_CONVERSION;
+    ADC_channel_0.ADC_Config.ADC_EOCInterrupt =  ADC_EOC_IT_DI;
+
+    ADC_channel_0.ADC_NumChannels = 1;
+    ADC_ChannelConfig(&ADC_channel_0, 1, 0, ADC_SMP_T_15);
+    ADC_ConfigSequence(&ADC_channel_0);
+
+    ADC_Init(&ADC_channel_0);
+
+    //ADC_StartConversion(pADC);
+
+    //for(__vo uint16_t i = 0; i<5000; i++);
+
+	TIM_Handle_t TIM_2;
+	pTIM = &TIM_2;
+	TIM_2.pTIMx = TIM2;
+	TIM_2.TIM_Config.TIM_Frequency = 9600;
+	TIM_2.TIM_Config.TIM_CLKDivision = TIM_CKD_DIV1;
+	TIM_2.TIM_Config.TIM_AutoReloadPreload = TIM_ARPE_ENABLE;
+	TIM_2.TIM_Config.TIM_CNTMode = TIM_UPCOUNT_MODE;
+	TIM_2.TIM_Config.TIM_IntEnable = TIM_IT_DISABLE;
+	TIM_2.TIM_Config.TIM_MasterModeSel = TIM_MMS_UPDATE;
+	TIM_Init(&TIM_2);
+
+	TIM_Start(&TIM_2);
+
+	//TIM_IRQInterruptConfig(IRQ_NO_TIM2, ENABLE);
+	//TIM_IRQPriorityConfig(IRQ_NO_TIM2, 0);
+
+    ADC_IRQInterruptConfig(18, ENABLE);
+    ADC_IRQPriorityConfig(18, 0);
+
+	while(1);
+	return 0;
+}
+
+//void TIM2_IRQHandler(void)
+//{
+	//TIM_IRQHandling(pTIM);
+	//GPIO_ToggleOutputPin(GPIOA, 5);
+	//ADC_StartConversion(pADC);
+	//while(!(ADC_GetConversionStatus(pADC)));
+	//value = ADC_ReadData(pADC);
+	//if( value > 2000 ) GPIO_WriteToOutputPin(GPIOA, GPIO_PIN_NO_5, 1);
+	//else GPIO_WriteToOutputPin(GPIOA, GPIO_PIN_NO_5, 0);
+//}
+
+void ADC_IRQHandler(void)
+{
+	ADC_IRQHandling(pADC);
+	//ADC_StartConversion(pADC);
+	//while(!(ADC_GetConversionStatus(pADC)));
+
+	static uint16_t cont = 0;
+	cont++;
+    if(cont % 500 == 0) {
+        GPIO_ToggleOutputPin(GPIOA, GPIO_PIN_NO_5);
+    }
+
+	//value = ADC_ReadData(pADC);
+	//if( value > 2000 ) GPIO_WriteToOutputPin(GPIOA, GPIO_PIN_NO_5, 1);
+	//else GPIO_WriteToOutputPin(GPIOA, GPIO_PIN_NO_5, 0);
+	//ADC_StopConversion(pADC);
+}

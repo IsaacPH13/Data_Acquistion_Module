@@ -1,0 +1,145 @@
+/*
+ * 005com.c
+ *
+ *  Created on: Oct 23, 2025
+ *      Author: jiperez
+ */
+#include "stm32f446.h"
+
+uint16_t value[1];
+TIM_Handle_t *pTIM;
+float new;
+
+// Handle para USART2
+USART_Handle_t USART2Handle;
+
+// Buffer para enviar datos (2 bytes)
+uint8_t tx_buffer[2];
+
+// Contador de debug
+volatile uint16_t debug_counter = 0;
+
+int main(void)
+{
+	SystemCLK_Config_84MHz();
+
+    // Configuración USART2 (USB Serial)
+    // Pines PA2 (TX) y PA3 (RX) para USART2
+    GPIO_Handle_t USART2Pins;
+
+    // Pin PA2 como TX
+    USART2Pins.pGPIOx = GPIOA;
+    USART2Pins.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_2;
+    USART2Pins.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_ALTFN;
+    USART2Pins.GPIO_PinConfig.GPIO_PinAltFunMode = 7; // AF7 para USART2
+    USART2Pins.GPIO_PinConfig.GPIO_PinOPType = GPIO_OP_TYPE_PP;
+    USART2Pins.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+    USART2Pins.GPIO_PinConfig.GPIO_PinSpeed = GPIO_SPEED_FAST;
+    GPIO_PeriClockControl(GPIOA, ENABLE);
+    GPIO_Init(&USART2Pins);
+
+    // Pin PA3 como RX
+    USART2Pins.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_3;
+    GPIO_Init(&USART2Pins);
+
+    // Configurar USART2
+    USART2Handle.pUSARTx = USART2;
+    USART2Handle.USARTConfig.USART_Baud = USART_STD_BAUD_115200;
+    USART2Handle.USARTConfig.USART_WordLength = USART_WLEN_8BITS;
+    USART2Handle.USARTConfig.USART_NoOfStopBits = USART_1_STOPBITS;
+    USART2Handle.USARTConfig.USART_ParityControl = USART_PARITY_DISABLE;
+    USART2Handle.USARTConfig.USART_HWFlowControl = USART_HW_FC_NONE;
+    USART2Handle.USARTConfig.USART_Mode = USART_MODE_TX_RX;
+
+    USART_Init(&USART2Handle);
+
+    // Habilitar USART
+    USART_PeripheralControl(USART2, ENABLE);
+
+    // LED de debug en PA5
+    GPIO_Handle_t DebugLed;
+    DebugLed.pGPIOx = GPIOA;
+    DebugLed.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_5;
+    DebugLed.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_OUTPUT;
+    DebugLed.GPIO_PinConfig.GPIO_PinSpeed = GPIO_SPEED_FAST;
+    DebugLed.GPIO_PinConfig.GPIO_PinOPType = GPIO_OP_TYPE_PP;
+    DebugLed.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+    GPIO_Init(&DebugLed);
+
+	// Tu código original ADC (lo mantenemos pero no lo usamos para el debug)
+	GPIO_Handle_t ADCIn_0;
+	ADCIn_0.pGPIOx = GPIOA;
+	ADCIn_0.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_ANALOG;
+	ADCIn_0.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_1;
+	ADCIn_0.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+	GPIO_Init(&ADCIn_0);
+
+	ADC_Handle_t ADC_channel_0;
+	ADC_channel_0.pADCx = ADC1;
+	ADC_channel_0.ADC_Config.ADC_Resolution = ADC_RESOLUTION_12_B;
+	ADC_channel_0.ADC_Config.ADC_DataAlignment = ADC_DATA_ALIGNMENT_RIGHT;
+	ADC_channel_0.ADC_Config.ADC_ScanMode =  ADC_SCAN_MODE_EN;
+	ADC_channel_0.ADC_Config.ADC_ConversionMode =  ADC_CONV_MODE_CONTINUOUS;
+	ADC_channel_0.ADC_Config.ADC_ExternalTriggerDetection =  ADC_EXT_TRIG_DECT_DI;
+	ADC_channel_0.ADC_Config.ADC_DMAContinuousRequests =  ADC_DMA_MODE_EN;
+	ADC_channel_0.ADC_Config.ADC_EOCSelection =  ADC_EOC_PER_CONVERSION;
+	ADC_channel_0.ADC_Config.ADC_EOCInterrupt =  ADC_EOC_IT_DI;
+
+	ADC_channel_0.ADC_NumChannels = 1;
+	ADC_ChannelConfig(&ADC_channel_0, 1, 0, ADC_SMP_T_15);
+	ADC_ConfigSequence(&ADC_channel_0);
+
+	ADC_Init(&ADC_channel_0);
+
+
+
+	ADC_StartConversion(&ADC_channel_0);
+
+
+	// Timer para enviar datos de debug - 10Hz (100ms)
+	TIM_Handle_t TIM_2;
+	pTIM = &TIM_2;
+	TIM_2.pTIMx = TIM2;
+	TIM_2.TIM_Config.TIM_Frequency = 10;  // 10Hz = 100ms
+	TIM_2.TIM_Config.TIM_CLKDivision = TIM_CKD_DIV1;
+	TIM_2.TIM_Config.TIM_AutoReloadPreload = TIM_ARPE_ENABLE;
+	TIM_2.TIM_Config.TIM_CNTMode = TIM_UPCOUNT_MODE;
+	TIM_2.TIM_Config.TIM_IntEnable = TIM_IT_ENABLE;
+	TIM_2.TIM_Config.TIM_MasterModeSel = TIM_MMS_RESET;
+	TIM_Init(&TIM_2);
+
+	TIM_Start(&TIM_2);
+
+	TIM_IRQInterruptConfig(IRQ_NO_TIM2, ENABLE);
+	TIM_IRQPriorityConfig(IRQ_NO_TIM2, 0);
+
+    // Encender LED para indicar que el sistema está listo
+    GPIO_WriteToOutputPin(GPIOA, GPIO_PIN_NO_5, 1);
+
+	while(1) {
+        // El trabajo principal lo hace la interrupción del timer
+	}
+	return 0;
+}
+
+void TIM2_IRQHandler(void)
+{
+	static uint32_t interrupt_count = 0;
+
+	TIM_IRQHandling(pTIM);
+
+	// Incrementar contador de debug
+	debug_counter++;
+
+	// Toggle LED cada interrupción
+	GPIO_ToggleOutputPin(GPIOA, GPIO_PIN_NO_5);
+
+	// Enviar contador cada interrupción (10Hz)
+	tx_buffer[0] = debug_counter & 0xFF;        // Byte bajo
+	tx_buffer[1] = (debug_counter >> 8) & 0xFF; // Byte alto
+
+	// Enviar por USART
+	USART_SendData(&USART2Handle, tx_buffer, 2);
+
+	interrupt_count++;
+}

@@ -1,0 +1,15 @@
+../drivers/Src/stm32f446_adc_driver.c:25:6:ADC_PeriClockControl	16	static
+../drivers/Src/stm32f446_adc_driver.c:52:6:ADC_Init	24	static
+../drivers/Src/stm32f446_adc_driver.c:117:6:ADC_DeInit	4	static
+../drivers/Src/stm32f446_adc_driver.c:122:6:ADC_ChannelConfig	16	static
+../drivers/Src/stm32f446_adc_driver.c:138:6:ADC_ConfigSequence	24	static
+../drivers/Src/stm32f446_adc_driver.c:168:6:ADC_StartConversion	16	static
+../drivers/Src/stm32f446_adc_driver.c:185:6:ADC_StopConversion	16	static
+../drivers/Src/stm32f446_adc_driver.c:202:10:ADC_ReadData	16	static
+../drivers/Src/stm32f446_adc_driver.c:219:9:ADC_GetConversionStatus	16	static
+../drivers/Src/stm32f446_adc_driver.c:227:6:ADC_IRQInterruptConfig	16	static
+../drivers/Src/stm32f446_adc_driver.c:262:6:ADC_IRQPriorityConfig	24	static
+../drivers/Src/stm32f446_adc_driver.c:272:6:ADC_IRQHandling	16	static
+../drivers/Src/stm32f446_adc_driver.c:295:6:ADC_DMAControl	16	static
+../drivers/Src/stm32f446_adc_driver.c:317:6:ADC_ConfigWatchdog	16	static
+../drivers/Src/stm32f446_adc_driver.c:324:6:ADC_SoftReset	24	static

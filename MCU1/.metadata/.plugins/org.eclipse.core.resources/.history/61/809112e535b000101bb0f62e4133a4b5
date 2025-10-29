@@ -1,0 +1,183 @@
+/*
+ * 004filter.c - Versión optimizada para ST-LINK
+ */
+#include "stm32f446.h"
+
+uint16_t value[1];
+float new;
+TIM_Handle_t *pTIM;
+
+// Variables para UART (USB integrado)
+USART_Handle_t huart2;
+volatile uint8_t uart_ready = 1;
+uint32_t sample_counter = 0;
+
+// Prototipos de funciones
+void USART2_Init(void);
+void USART2_Send_Data(uint16_t data);
+
+int main(void)
+{
+    SystemCLK_Config_84MHz();
+
+    // Inicializar UART para comunicación USB
+    USART2_Init();
+
+    GPIO_Handle_t ADCIn_0;
+    ADCIn_0.pGPIOx = GPIOA;
+    ADCIn_0.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_ANALOG;
+    ADCIn_0.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_1;
+    ADCIn_0.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+    GPIO_PeriClockControl(GPIOA, ENABLE);
+    GPIO_Init(&ADCIn_0);
+
+    // ✅ HABILITAR CLOCK ADC
+    ADC_PeriClockControl(ADC1, ENABLE);
+
+    ADC_Handle_t ADC_channel_0;
+    ADC_channel_0.pADCx = ADC1;
+    ADC_channel_0.ADC_Config.ADC_Resolution = ADC_RESOLUTION_12_B;
+    ADC_channel_0.ADC_Config.ADC_DataAlignment = ADC_DATA_ALIGNMENT_RIGHT;
+    ADC_channel_0.ADC_Config.ADC_ScanMode =  ADC_SCAN_MODE_EN;
+    ADC_channel_0.ADC_Config.ADC_ConversionMode =  ADC_CONV_MODE_CONTINUOUS;
+    ADC_channel_0.ADC_Config.ADC_ExternalTriggerDetection =  ADC_EXT_TRIG_DECT_DI;
+    ADC_channel_0.ADC_Config.ADC_ExternalTrigger =  0;
+    ADC_channel_0.ADC_Config.ADC_DMAContinuousRequests =  ADC_DMA_MODE_EN;
+    ADC_channel_0.ADC_Config.ADC_EOCSelection =  ADC_EOC_PER_CONVERSION;
+    ADC_channel_0.ADC_Config.ADC_EOCInterrupt =  ADC_EOC_IT_DI;
+
+    ADC_channel_0.ADC_NumChannels = 1;
+    ADC_ChannelConfig(&ADC_channel_0, 1, 0, ADC_SMP_T_15); // ✅ Canal 1 para PA1
+    ADC_ConfigSequence(&ADC_channel_0);
+
+    ADC_Init(&ADC_channel_0);
+
+    // ✅ HABILITAR CLOCK DMA
+    DMA_PeriClockControl(DMA2, ENABLE);
+
+    DMA_Handle_t DMA_0;
+    DMA_0.pDMAx = DMA2;
+    DMA_0.DMA_Config.DMA_Channel = DMA_CHANNEL_0;
+    DMA_0.DMA_Config.DMA_Direction = DMA_DIR_PERIPH_TO_MEM;
+    DMA_0.DMA_Config.DMA_Priority = DMA_PRIORITY_HIGH;
+    DMA_0.DMA_Config.DMA_MemDataSize = DMA_DATA_SIZE_HALFWORD;
+    DMA_0.DMA_Config.DMA_PeriphDataSize = DMA_DATA_SIZE_HALFWORD;
+    DMA_0.DMA_Config.DMA_MemInc = ENABLE;
+    DMA_0.DMA_Config.DMA_PeriphInc = DISABLE;
+    DMA_0.DMA_Config.DMA_FIFOMode = DMA_FIFO_MODE_DISABLED;
+    DMA_0.DMA_Config.DMA_FIFOThreshold = 0;
+    DMA_0.DMA_Config.DMA_Mode = DMA_MODE_CIRCULAR;
+    DMA_0.BufferSize = 1;
+    DMA_0.DMA_stream = 0;
+
+    DMA_SetAddresses(&DMA_0,(void*)&ADC_channel_0.pADCx->DR,(void*)value);
+
+    DMA_Init(&DMA_0);
+    DMA_StartTransfer(&DMA_0);
+
+    // Delay para estabilización
+    for(volatile uint32_t i = 0; i < 1000; i++);
+
+    ADC_StartConversion(&ADC_channel_0);
+
+    // ✅ HABILITAR CLOCK TIMER
+    TIM_PeriClockControl(TIM2, ENABLE);
+
+    TIM_Handle_t TIM_2;
+    pTIM = &TIM_2;
+    TIM_2.pTIMx = TIM2;
+    TIM_2.TIM_Config.TIM_Frequency = 9600;
+    TIM_2.TIM_Config.TIM_CLKDivision = TIM_CKD_DIV1;
+    TIM_2.TIM_Config.TIM_AutoReloadPreload = TIM_ARPE_ENABLE;
+    TIM_2.TIM_Config.TIM_CNTMode = TIM_UPCOUNT_MODE;
+    TIM_2.TIM_Config.TIM_IntEnable = TIM_IT_ENABLE;
+    TIM_2.TIM_Config.TIM_MasterModeSel = TIM_MMS_RESET;
+    TIM_Init(&TIM_2);
+
+    TIM_Start(&TIM_2);
+
+    // Configurar interrupciones
+    TIM_IRQInterruptConfig(IRQ_NO_TIM2, ENABLE);
+    TIM_IRQPriorityConfig(IRQ_NO_TIM2, 0);
+
+    // Habilitar interrupción UART para transmisión completa
+    USART_IRQInterruptConfig(IRQ_NO_USART2, ENABLE);
+    USART_IRQPriorityConfig(IRQ_NO_USART2, 1);
+
+    while(1) {
+        // Loop principal - el procesamiento se hace en las interrupciones
+    }
+    return 0;
+}
+
+void TIM2_IRQHandler(void)
+{
+    TIM_IRQHandling(pTIM);
+    new = (value[0] / 4095.0f) * 3.3f;
+
+    // ✅ ENVÍO REDUCIDO: 1 de cada 12 muestras (~800 Hz)
+    if((sample_counter % 12 == 0) && uart_ready) {
+        USART2_Send_Data(value[0]);
+        uart_ready = 0;
+    }
+
+    sample_counter++;
+}
+
+void USART2_IRQHandler(void)
+{
+    // Verificar si la transmisión está completa
+    if(USART2->SR & USART_SR_TC) {
+        USART2->SR &= ~USART_SR_TC;  // Limpiar flag
+        uart_ready = 1;              // Listo para siguiente transmisión
+    }
+}
+
+void USART2_Send_Data(uint16_t data)
+{
+    // Enviar los 2 bytes del dato ADC (little endian)
+
+    // Byte bajo primero
+    while(!(USART2->SR & USART_SR_TXE));
+    USART2->DR = (data & 0xFF);
+
+    // ✅ DELAY ENTRE BYTES (evita saturación)
+    for(volatile uint32_t i = 0; i < 80; i++);
+
+    // Byte alto después
+    while(!(USART2->SR & USART_SR_TXE));
+    USART2->DR = ((data >> 8) & 0xFF);
+}
+
+void USART2_Init(void)
+{
+    // Habilitar clocks para USART2 y GPIOA
+    GPIOA_PCLK_EN();
+    USART2_PCLK_EN();
+
+    // Configurar PA2 como TX para USART2 (conexión USB via ST-LINK)
+    GPIO_Handle_t GPIO_UART;
+    GPIO_UART.pGPIOx = GPIOA;
+    GPIO_UART.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_ALT;
+    GPIO_UART.GPIO_PinConfig.GPIO_PinAltFunMode = 7;  // AF7 para USART2
+    GPIO_UART.GPIO_PinConfig.GPIO_PinOPType = GPIO_OP_TYPE_PP;
+    GPIO_UART.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+    GPIO_UART.GPIO_PinConfig.GPIO_PinSpeed = GPIO_SPEED_FAST;
+    GPIO_UART.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_2;
+
+    GPIO_Init(&GPIO_UART);
+
+    // Configurar USART2
+    huart2.pUSARTx = USART2;
+    huart2.USART_Config.USART_Baud = 115200;
+    huart2.USART_Config.USART_WordLength = USART_WORDLEN_8B;
+    huart2.USART_Config.USART_StopBits = USART_STOPBITS_1;
+    huart2.USART_Config.USART_ParityControl = USART_PARITY_DISABLE;
+    huart2.USART_Config.USART_Mode = USART_MODE_TX;
+    huart2.USART_Config.USART_HWFlowControl = USART_HW_FLOW_CTRL_NONE;
+
+    USART_Init(&huart2);
+
+    // Habilitar interrupción de transmisión completa
+    USART2->CR1 |= USART_CR1_TCIE;
+}

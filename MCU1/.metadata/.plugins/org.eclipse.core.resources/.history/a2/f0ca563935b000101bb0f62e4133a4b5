@@ -1,0 +1,42 @@
+#ifndef STM32F446_UART_DRIVER_H
+#define STM32F446_UART_DRIVER_H
+
+#include "stm32f446.h"
+
+// Configuración USART
+typedef struct {
+    uint32_t USART_Baud;
+    uint8_t USART_WordLength;
+    uint8_t USART_StopBits;
+    uint8_t USART_ParityControl;
+    uint8_t USART_Mode;
+    uint8_t USART_HWFlowControl;
+} USART_Config_t;
+
+// Handle USART
+typedef struct {
+    USART_RegDef_t *pUSARTx;
+    USART_Config_t USART_Config;
+} USART_Handle_t;
+
+// Macros
+#define USART_WORDLEN_8B        0
+#define USART_WORDLEN_9B        1
+
+#define USART_STOPBITS_1        0
+#define USART_STOPBITS_2        1
+
+#define USART_PARITY_DISABLE    0
+#define USART_PARITY_ENABLE     1
+
+#define USART_MODE_TX           1
+#define USART_MODE_RX           2
+#define USART_MODE_TXRX         3
+
+#define USART_HW_FLOW_CTRL_NONE 0
+
+// Prototipos
+void USART_Init(USART_Handle_t *pUSARTHandle);
+void USART_PeriClockControl(USART_RegDef_t *pUSARTx, uint8_t EnorDi);
+
+#endif

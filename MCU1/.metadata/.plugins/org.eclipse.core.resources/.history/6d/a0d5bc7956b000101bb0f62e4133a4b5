@@ -1,0 +1,84 @@
+#include "stm32f446_uart_driver.h"
+
+void USART_PeriClockControl(USART_RegDef_t *pUSARTx, uint8_t EnorDi)
+{
+    if(EnorDi == ENABLE) {
+        if(pUSARTx == USART1) USART1_PCLK_EN();
+        else if(pUSARTx == USART2) USART2_PCLK_EN();
+        else if(pUSARTx == USART3) USART3_PCLK_EN();
+        else if(pUSARTx == UART4) UART4_PCLK_EN();
+        else if(pUSARTx == UART5) UART5_PCLK_EN();
+        else if(pUSARTx == USART6) USART6_PCLK_EN();
+    } else {
+        if(pUSARTx == USART1) USART1_PCLK_DI();
+        else if(pUSARTx == USART2) USART2_PCLK_DI();
+        else if(pUSARTx == USART3) USART3_PCLK_DI();
+        else if(pUSARTx == UART4) UART4_PCLK_DI();
+        else if(pUSARTx == UART5) UART5_PCLK_DI();
+        else if(pUSARTx == USART6) USART6_PCLK_DI();
+    }
+}
+
+void USART_Init(USART_Handle_t *pUSARTHandle)
+{
+    // Habilitar clock
+    USART_PeriClockControl(pUSARTHandle->pUSARTx, ENABLE);
+
+    // Deshabilitar USART antes de configurar
+    pUSARTHandle->pUSARTx->CR1 &= ~(USART_CR1_UE);
+
+    // BRR CORREGIDO para 115200 baud @ 42MHz (APB1)
+    // Fórmula: BRR = fCK / (16 * baud)
+    // BRR = 42,000,000 / (16 * 115200) = 22.786458
+    // Mantisa = 22, Fraction = 0.786458 * 16 = 12.583 → 13
+    uint32_t temp_brr = ((273 << 4) | 7); ;
+    pUSARTHandle->pUSARTx->BRR = temp_brr;
+
+    // Configurar Control Register 1
+    uint32_t temp_cr1 = 0;
+
+    // Habilitar TX
+    if(pUSARTHandle->USART_Config.USART_Mode & USART_MODE_TX) {
+        temp_cr1 |= USART_CR1_TE;
+    }
+
+    // Habilitar RX
+    if(pUSARTHandle->USART_Config.USART_Mode & USART_MODE_RX) {
+        temp_cr1 |= USART_CR1_RE;
+    }
+
+    pUSARTHandle->pUSARTx->CR1 = temp_cr1;
+
+    // Configurar Control Register 2 (1 stop bit)
+    pUSARTHandle->pUSARTx->CR2 = 0;
+
+    // Configurar Control Register 3 (sin control de flujo)
+    pUSARTHandle->pUSARTx->CR3 = 0;
+
+    // Habilitar USART
+    pUSARTHandle->pUSARTx->CR1 |= USART_CR1_UE;
+
+    // Delay para estabilización
+    for(volatile uint32_t i = 0; i < 10000; i++);
+}
+
+void USART_SendData(USART_RegDef_t *pUSARTx, uint8_t *pTxBuffer, uint32_t Len)
+{
+    for(uint32_t i = 0; i < Len; i++) {
+        // Esperar a que el buffer de transmisión esté vacío
+        while(!(pUSARTx->SR & USART_SR_TXE));
+
+        // Enviar dato
+        pUSARTx->DR = pTxBuffer[i];
+    }
+
+    // Esperar a que la transmisión se complete
+    while(!(pUSARTx->SR & USART_SR_TC));
+}
+
+uint8_t USART_IsTXComplete(USART_RegDef_t *pUSARTx)
+{
+    return (pUSARTx->SR & USART_SR_TC) ? 1 : 0;
+}
+
+// ... (las demás funciones IRQ se mantienen igual)

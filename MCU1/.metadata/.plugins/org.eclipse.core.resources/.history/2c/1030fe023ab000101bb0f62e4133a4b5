@@ -1,0 +1,115 @@
+/*
+ * 004filter.c
+ *
+ *  Created on: Oct 22, 2025
+ *      Author: jiperez
+ */
+#include "stm32f446.h"
+
+uint16_t value[1];
+uint16_t cont;
+float new;
+TIM_Handle_t *pTIM ;
+
+int main(void)
+{
+	SystemCLK_Config_84MHz();
+
+	GPIO_Handle_t GpioLed;
+
+	GPIO_PeriClockControl(GPIOA, ENABLE);
+
+	GpioLed.pGPIOx = GPIOA;
+	GpioLed.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_5;
+	GpioLed.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_OUTPUT;
+	GpioLed.GPIO_PinConfig.GPIO_PinSpeed = GPIO_SPEED_FAST;
+	GpioLed.GPIO_PinConfig.GPIO_PinOPType = GPIO_OP_TYPE_PP;
+	GpioLed.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+
+	GPIO_Init(&GpioLed);
+
+	GPIO_Handle_t ADCIn_0;
+	ADCIn_0.pGPIOx = GPIOA;
+	ADCIn_0.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_ANALOG;
+	ADCIn_0.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_1;
+	ADCIn_0.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+
+	GPIO_Init(&ADCIn_0);
+
+	ADC_Handle_t ADC_channel_0;
+	ADC_channel_0.pADCx = ADC1;
+	ADC_channel_0.ADC_Config.ADC_Resolution = ADC_RESOLUTION_12_B;
+	ADC_channel_0.ADC_Config.ADC_DataAlignment = ADC_DATA_ALIGNMENT_RIGHT;
+	ADC_channel_0.ADC_Config.ADC_ScanMode =  ADC_SCAN_MODE_EN;
+	ADC_channel_0.ADC_Config.ADC_ConversionMode =  ADC_CONV_MODE_CONTINUOUS;
+	ADC_channel_0.ADC_Config.ADC_ExternalTriggerDetection =  ADC_EXT_TRIG_DECT_DI;
+	ADC_channel_0.ADC_Config.ADC_ExternalTrigger =  0;
+	ADC_channel_0.ADC_Config.ADC_DMAContinuousRequests =  ADC_DMA_MODE_EN;
+	ADC_channel_0.ADC_Config.ADC_EOCSelection =  ADC_EOC_PER_CONVERSION;
+	ADC_channel_0.ADC_Config.ADC_EOCInterrupt =  ADC_EOC_IT_DI;
+
+	ADC_channel_0.ADC_NumChannels = 1;
+	ADC_ChannelConfig(&ADC_channel_0, 1, 0, ADC_SMP_T_15);
+	ADC_ConfigSequence(&ADC_channel_0);
+
+	ADC_Init(&ADC_channel_0);
+
+	DMA_Handle_t DMA_0;
+	DMA_0.pDMAx = DMA2;
+	DMA_0.DMA_Config.DMA_Channel = DMA_CHANNEL_0;
+	DMA_0.DMA_Config.DMA_Direction = DMA_DIR_PERIPH_TO_MEM;
+	DMA_0.DMA_Config.DMA_Priority = DMA_PRIORITY_MEDIUM;
+	DMA_0.DMA_Config.DMA_MemDataSize = DMA_DATA_SIZE_HALFWORD;
+	DMA_0.DMA_Config.DMA_PeriphDataSize = DMA_DATA_SIZE_HALFWORD;
+	DMA_0.DMA_Config.DMA_MemInc = ENABLE;
+	DMA_0.DMA_Config.DMA_PeriphInc = DISABLE;
+	DMA_0.DMA_Config.DMA_FIFOMode = DMA_FIFO_MODE_DISABLED;
+	DMA_0.DMA_Config.DMA_FIFOThreshold = 0;
+	DMA_0.DMA_Config.DMA_Mode = DMA_MODE_CIRCULAR;
+	DMA_0.BufferSize = 1;
+	DMA_0.DMA_stream = 0;
+
+	DMA_SetAddresses(&DMA_0,(void*)&ADC_channel_0.pADCx->DR,(void*)value);
+
+	DMA_Init(&DMA_0);
+
+	DMA_StartTransfer(&DMA_0);
+
+	for(__vo uint16_t i = 0; i < 500; i++);
+
+	ADC_StartConversion(&ADC_channel_0);
+
+
+	TIM_Handle_t TIM_2;
+	pTIM = &TIM_2;
+	TIM_2.pTIMx = TIM2;
+	TIM_2.TIM_Config.TIM_Frequency = 9600;
+	TIM_2.TIM_Config.TIM_CLKDivision = TIM_CKD_DIV1;
+	TIM_2.TIM_Config.TIM_AutoReloadPreload = TIM_ARPE_ENABLE;
+	TIM_2.TIM_Config.TIM_CNTMode = TIM_UPCOUNT_MODE;
+	TIM_2.TIM_Config.TIM_IntEnable = TIM_IT_ENABLE;
+	TIM_2.TIM_Config.TIM_MasterModeSel = TIM_MMS_RESET;
+	TIM_Init(&TIM_2);
+
+	TIM_Start(&TIM_2);
+
+	TIM_IRQInterruptConfig(IRQ_NO_TIM2, ENABLE);
+	TIM_IRQPriorityConfig(IRQ_NO_TIM2, 0);
+
+	while(1)
+	{
+		if((new>=1.2)&&(new<=1.6)) GPIO_ToggleOutputPin(GPIOA, GPIO_PIN_NO_5);
+	}
+	return 0;
+}
+
+void TIM2_IRQHandler(void)
+{
+	TIM_IRQHandling(pTIM);
+	new = (value[0]/4095.0f)*3.3f;
+	if( (new >= 1.45) && (new<=1.75)) cont++;
+	if(cont<=100) GPIO_WriteToOutputPin(GPIOA, GPIO_PIN_NO_5, 0);
+	else if(cont<=200) GPIO_WriteToOutputPin(GPIOA, GPIO_PIN_NO_5, 1);
+	else if(cont>=200) cont = 0;
+}
+

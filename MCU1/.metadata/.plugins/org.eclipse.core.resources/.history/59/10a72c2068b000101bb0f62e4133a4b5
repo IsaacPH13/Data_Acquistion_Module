@@ -1,0 +1,191 @@
+/*
+ * 005com.c - Sistema Robusto con Clock Estable
+ */
+#include "stm32f446.h"
+
+uint16_t value[1] = {0};
+TIM_Handle_t *pTIM;
+
+// Handle para USART2
+USART_Handle_t USART2Handle;
+
+// Buffer para enviar datos
+uint8_t tx_buffer[2];
+volatile uint16_t debug_counter = 0;
+
+// Función de delay robusta
+void robust_delay(uint32_t count) {
+    for(volatile uint32_t i = 0; i < count; i++) {
+        __asm__("nop");
+    }
+}
+
+// Función para verificar si USART está listo (con timeout)
+uint8_t USART_WaitForReady(USART_RegDef_t *pUSARTx, uint32_t timeout) {
+    while(timeout--) {
+        if(pUSARTx->SR & (1 << 7)) { // TXE flag
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// Versión segura de enviar string
+void USART_SendString_Safe(USART_Handle_t *pUSARTHandle, char *str) {
+    while(*str) {
+        if(USART_WaitForReady(pUSARTHandle->pUSARTx, 100000)) {
+            pUSARTHandle->pUSARTx->DR = *str;
+            str++;
+        } else {
+            // Timeout - salir silenciosamente
+            break;
+        }
+    }
+}
+
+int main(void)
+{
+    // **PASO 1: Configurar Clock con más cuidado**
+    SystemCLK_Config_84MHz();
+
+    // Delay largo después del clock
+    robust_delay(1000000);
+
+    GPIO_Handle_t DebugLed;
+    DebugLed.pGPIOx = GPIOA;
+    DebugLed.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_5;
+    DebugLed.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_OUTPUT;
+    DebugLed.GPIO_PinConfig.GPIO_PinSpeed = GPIO_SPEED_FAST;
+    DebugLed.GPIO_PinConfig.GPIO_PinOPType = GPIO_OP_TYPE_PP;
+    DebugLed.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+    GPIO_PeriClockControl(GPIOA, ENABLE);
+    GPIO_Init(&DebugLed);
+
+    // Indicar inicio con LED
+    GPIO_WriteToOutputPin(GPIOA, GPIO_PIN_NO_5, 1);
+    robust_delay(2000000);
+    GPIO_WriteToOutputPin(GPIOA, GPIO_PIN_NO_5, 0);
+    robust_delay(500000);
+
+    // **PASO 3: Configurar USART de manera MÍNIMA y SEGURA**
+    GPIO_Handle_t USART2Pins;
+    USART2Pins.pGPIOx = GPIOA;
+    USART2Pins.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_2;
+    USART2Pins.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_ALTFN;
+    USART2Pins.GPIO_PinConfig.GPIO_PinAltFunMode = 7;
+    USART2Pins.GPIO_PinConfig.GPIO_PinOPType = GPIO_OP_TYPE_PP;
+    USART2Pins.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+    USART2Pins.GPIO_PinConfig.GPIO_PinSpeed = GPIO_SPEED_FAST;
+    GPIO_Init(&USART2Pins);
+
+    // **CONFIGURACIÓN USART MÍNIMA**
+    USART2Handle.pUSARTx = USART2;
+    USART2Handle.USARTConfig.USART_Baud = USART_STD_BAUD_9600;  // 9600 es más estable
+    USART2Handle.USARTConfig.USART_WordLength = USART_WLEN_8BITS;
+    USART2Handle.USARTConfig.USART_NoOfStopBits = USART_1_STOPBITS;
+    USART2Handle.USARTConfig.USART_ParityControl = USART_PARITY_DISABLE;
+    USART2Handle.USARTConfig.USART_HWFlowControl = USART_HW_FC_NONE;
+    USART2Handle.USARTConfig.USART_Mode = USART_MODE_ONLY_TX;
+    USART_Init(&USART2Handle);
+
+    robust_delay(50000);
+
+    TIM_Handle_t TIM_2;
+    pTIM = &TIM_2;
+    TIM_2.pTIMx = TIM2;
+    TIM_2.TIM_Config.TIM_Frequency = 10;  // 1Hz - muy lento para debug
+    TIM_2.TIM_Config.TIM_CLKDivision = TIM_CKD_DIV1;
+    TIM_2.TIM_Config.TIM_AutoReloadPreload = TIM_ARPE_ENABLE;
+    TIM_2.TIM_Config.TIM_CNTMode = TIM_UPCOUNT_MODE;
+    TIM_2.TIM_Config.TIM_IntEnable = TIM_IT_ENABLE;
+    TIM_2.TIM_Config.TIM_MasterModeSel = TIM_MMS_RESET;
+
+    TIM_PeriClockControl(TIM2, ENABLE);
+    TIM_Init(pTIM);
+    TIM_Start(&TIM_2);
+    TIM_IRQInterruptConfig(IRQ_NO_TIM2, ENABLE);
+    TIM_IRQPriorityConfig(IRQ_NO_TIM2, 0);
+
+    robust_delay(500000);
+
+    GPIO_Handle_t ADCIn_0;
+	ADCIn_0.pGPIOx = GPIOA;
+	ADCIn_0.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_ANALOG;
+	ADCIn_0.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_1;
+	ADCIn_0.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+	GPIO_PeriClockControl(GPIOA, ENABLE);
+	GPIO_Init(&ADCIn_0);
+
+	ADC_Handle_t ADC_channel_0;
+	ADC_channel_0.pADCx = ADC1;
+	ADC_channel_0.ADC_Config.ADC_Resolution = ADC_RESOLUTION_12_B;
+	ADC_channel_0.ADC_Config.ADC_DataAlignment = ADC_DATA_ALIGNMENT_RIGHT;
+	ADC_channel_0.ADC_Config.ADC_ScanMode =  ADC_SCAN_MODE_EN;
+	ADC_channel_0.ADC_Config.ADC_ConversionMode =  ADC_CONV_MODE_CONTINUOUS;
+	ADC_channel_0.ADC_Config.ADC_ExternalTriggerDetection =  ADC_EXT_TRIG_DECT_DI;
+	ADC_channel_0.ADC_Config.ADC_DMAContinuousRequests =  ADC_DMA_MODE_EN;
+	ADC_channel_0.ADC_Config.ADC_EOCSelection =  ADC_EOC_PER_CONVERSION;
+	ADC_channel_0.ADC_Config.ADC_EOCInterrupt =  ADC_EOC_IT_DI;
+
+	ADC_channel_0.ADC_NumChannels = 1;
+	ADC_ChannelConfig(&ADC_channel_0, 1, 0, ADC_SMP_T_15);
+	ADC_ConfigSequence(&ADC_channel_0);
+
+	ADC_Init(&ADC_channel_0);
+
+    robust_delay(10000);
+
+    DMA_Handle_t DMA_0;
+	DMA_0.pDMAx = DMA2;
+	DMA_0.DMA_Config.DMA_Channel = DMA_CHANNEL_0;
+	DMA_0.DMA_Config.DMA_Direction = DMA_DIR_PERIPH_TO_MEM;
+	DMA_0.DMA_Config.DMA_Priority = DMA_PRIORITY_HIGH;
+	DMA_0.DMA_Config.DMA_MemDataSize = DMA_DATA_SIZE_HALFWORD;
+	DMA_0.DMA_Config.DMA_PeriphDataSize = DMA_DATA_SIZE_HALFWORD;
+	DMA_0.DMA_Config.DMA_MemInc = ENABLE;
+	DMA_0.DMA_Config.DMA_PeriphInc = DISABLE;
+	DMA_0.DMA_Config.DMA_FIFOMode = DMA_FIFO_MODE_DISABLED;
+	DMA_0.DMA_Config.DMA_FIFOThreshold = 0;
+	DMA_0.DMA_Config.DMA_Mode = DMA_MODE_CIRCULAR;
+	DMA_0.BufferSize = 1;
+
+	DMA_SetAddresses(&DMA_0,(void*)&ADC_channel_0.pADCx->DR,(void*)value);
+
+	DMA_Init(&DMA_0);
+    robust_delay(10000);
+
+    DMA_StartTransfer(&DMA_0);
+
+
+    // LED indicando sistema listo
+    GPIO_WriteToOutputPin(GPIOA, GPIO_PIN_NO_5, 1);
+    robust_delay(1000000);
+    GPIO_WriteToOutputPin(GPIOA, GPIO_PIN_NO_5, 0);
+
+	while(1) {
+        // Loop principal mínimo
+	}
+	return 0;
+}
+
+void TIM2_IRQHandler(void)
+{
+    // Limpiar flag de interrupción directamente
+    if(TIM2->SR & (1 << 0)) {
+        TIM2->SR &= ~(1 << 0);
+    }
+
+	debug_counter++;
+	GPIO_ToggleOutputPin(GPIOA, GPIO_PIN_NO_5);
+
+	// Enviar contador de manera segura
+	tx_buffer[0] = debug_counter & 0xFF;
+	tx_buffer[1] = (debug_counter >> 8) & 0xFF;
+
+    if(USART_WaitForReady(USART2, 1000)) {
+        USART2->DR = tx_buffer[0];
+    }
+    if(USART_WaitForReady(USART2, 1000)) {
+        USART2->DR = tx_buffer[1];
+    }
+}
