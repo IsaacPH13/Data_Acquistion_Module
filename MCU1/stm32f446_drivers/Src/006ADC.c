@@ -1,6 +1,5 @@
 /*
  * 006filter.c
- * Versión optimizada con cambios mínimos
  */
 
 #include "stm32f446.h"
@@ -67,12 +66,12 @@ int main(void)
 	TIM_Handle_t TIM_2;
 	pTIM = &TIM_2;
 	TIM_2.pTIMx = TIM2;
-	TIM_2.TIM_Config.TIM_Frequency = 9600;        // Frecuencia más baja
+	TIM_2.TIM_Config.TIM_Frequency = 9600;       
 	TIM_2.TIM_Config.TIM_CLKDivision = TIM_CKD_DIV1;
 	TIM_2.TIM_Config.TIM_AutoReloadPreload = TIM_ARPE_ENABLE;
 	TIM_2.TIM_Config.TIM_CNTMode = TIM_UPCOUNT_MODE;
 	TIM_2.TIM_Config.TIM_IntEnable = TIM_IT_ENABLE;
-	TIM_2.TIM_Config.TIM_MasterModeSel = TIM_MMS_RESET;  // Sin TRGO
+	TIM_2.TIM_Config.TIM_MasterModeSel = TIM_MMS_RESET; 
 	TIM_Init(&TIM_2);
 
 	TIM_Start(&TIM_2);
